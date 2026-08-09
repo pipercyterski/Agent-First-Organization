@@ -1,0 +1,339 @@
+{
+  "llm_config": {
+    "model_type_or_path": "gpt-4o",
+    "llm_provider": "openai",
+    "langchain_model_kwargs": {}
+  },
+  "nodes": [
+    [
+      "0",
+      {
+        "resource": {
+          "id": "openai-agent"
+        },
+        "attribute": {
+          "task": "",
+          "type": "agent",
+          "start": true,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "Sweet For Everyone Support",
+          "prompt": "Sweet for everyone is an online retailer offering a curated selection of children's apparel and home accessories. You are an assistant that supports customers in their shopping experience.\n\nYour role: customer service assistant. The customer service assistant helps users with customer service inquiries. It can provide information about products, services, and policies, as well as help users resolve issues and complete transactions.\n\nYou have these tools:\n- get_user_details_admin: look up a customer account by user_id.\n- get_order_details: list a customer's orders. Each order carries its status,\n  fulfillment_status, return_status, cancellable and cancel_block_reason.\n- search_products / get_products / get_web_product: browse the catalog.\n- get_cart / cart_add_items: read and modify the customer's cart.\n- return_products: submit a return request for an order.\n- cancel_order: cancel an order. This notifies the customer, restocks the\n  inventory and refunds the payment. It cannot be undone.\n\nCheck the order's own fields before you act on it. Tell the customer plainly\nwhat you did or could not do.",
+          "agent_start_message": "Hi! How can I help you with your order today?"
+        }
+      }
+    ],
+    [
+      "1",
+      {
+        "resource": {
+          "id": "shopify/get-user-details-admin"
+        },
+        "attribute": {
+          "task": "Look up the customer's account record by their customer id",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "get_user_details_admin"
+        }
+      }
+    ],
+    [
+      "2",
+      {
+        "resource": {
+          "id": "shopify/get-order-details"
+        },
+        "attribute": {
+          "task": "List the customer's orders with status, totals, cancellability and line items",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "get_order_details"
+        }
+      }
+    ],
+    [
+      "3",
+      {
+        "resource": {
+          "id": "shopify/search-products"
+        },
+        "attribute": {
+          "task": "Search the catalog for products matching a free-text query",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "search_products"
+        }
+      }
+    ],
+    [
+      "4",
+      {
+        "resource": {
+          "id": "shopify/get-products"
+        },
+        "attribute": {
+          "task": "Fetch catalog products by their product ids",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "get_products"
+        }
+      }
+    ],
+    [
+      "5",
+      {
+        "resource": {
+          "id": "shopify/get-web-product"
+        },
+        "attribute": {
+          "task": "Fetch a single storefront product by id",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "get_web_product"
+        }
+      }
+    ],
+    [
+      "6",
+      {
+        "resource": {
+          "id": "shopify/get-cart"
+        },
+        "attribute": {
+          "task": "Read the contents of the customer's cart",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "get_cart"
+        }
+      }
+    ],
+    [
+      "7",
+      {
+        "resource": {
+          "id": "shopify/cart-add-items"
+        },
+        "attribute": {
+          "task": "Add product variants to the customer's cart",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "cart_add_items"
+        }
+      }
+    ],
+    [
+      "8",
+      {
+        "resource": {
+          "id": "shopify/return-products"
+        },
+        "attribute": {
+          "task": "Submit a return request for a delivered order",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "return_products"
+        }
+      }
+    ],
+    [
+      "9",
+      {
+        "resource": {
+          "id": "shopify/cancel-order"
+        },
+        "attribute": {
+          "task": "Cancel an order, which notifies the customer, restocks inventory and refunds payment",
+          "type": "tool",
+          "start": false,
+          "can_skipped": false
+        },
+        "data": {
+          "name": "cancel_order"
+        }
+      }
+    ]
+  ],
+  "edges": [
+    [
+      "0",
+      "1",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "2",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "3",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "4",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "5",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "6",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "7",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "8",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ],
+    [
+      "0",
+      "9",
+      {
+        "intent": "None",
+        "attribute": {
+          "weight": 1,
+          "pred": true,
+          "definition": "",
+          "sample_utterances": []
+        }
+      }
+    ]
+  ],
+  "workers": [],
+  "tools": [
+    {
+      "id": "shopify/get-user-details-admin"
+    },
+    {
+      "id": "shopify/get-order-details"
+    },
+    {
+      "id": "shopify/search-products"
+    },
+    {
+      "id": "shopify/get-products"
+    },
+    {
+      "id": "shopify/get-web-product"
+    },
+    {
+      "id": "shopify/get-cart"
+    },
+    {
+      "id": "shopify/cart-add-items"
+    },
+    {
+      "id": "shopify/return-products"
+    },
+    {
+      "id": "shopify/cancel-order"
+    }
+  ],
+  "agents": [
+    {
+      "id": "openai-agent"
+    }
+  ],
+  "role": "customer service assistant",
+  "user_objective": "The customer service assistant helps users with customer service inquiries. It can provide information about products, services, and policies, as well as help users resolve issues and complete transactions.",
+  "domain": "Shopify sellers",
+  "intro": "Sweet for everyone is an online retailer offering a curated selection of children's apparel and home accessories. You are an assistant that supports customers in their shopping experience."
+}

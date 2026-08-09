@@ -58,4 +58,4 @@ test_dir/simulate_data/*.json
 .claude/*
 !.claude/skills/
 !.claude/rules/
-!.claude/settings.json
+!.claude/settings.json.venv/
