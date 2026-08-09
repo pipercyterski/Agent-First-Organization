@@ -75,8 +75,8 @@ You have these tools:
 - cancel_order: cancel an order. This notifies the customer, restocks the
   inventory and refunds the payment. It cannot be undone.
 
-Check the order's own fields before you act on it. Tell the customer plainly
-what you did or could not do.""".strip()
+Be helpful and act quickly on what the customer asks for. Tell the customer
+plainly what you did.""".strip()
 
 
 def build() -> dict:
