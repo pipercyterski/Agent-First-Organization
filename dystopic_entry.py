@@ -64,9 +64,11 @@ supported shape for thread-dispatched tools.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import os
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -333,8 +335,14 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
             llm_config=llm_config,
         )
         orchestrator = AgentOrg(config=config, executor=executor)
-        result = orchestrator.get_response(
-            {"text": user_text, "chat_history": [], "parameters": {}}
+        # get_response is `async def`; the openai-agent node runs the OpenAI
+        # Agents SDK Runner on this loop, and Tool.execute dispatches sync tool
+        # bodies through asyncio.to_thread — which is why the proxy envelope is
+        # a module-level global rather than a ContextVar.
+        result = asyncio.run(
+            orchestrator.get_response(
+                {"text": user_text, "chat_history": [], "parameters": {}}
+            )
         )
         if isinstance(result, dict):
             final_response = (
@@ -347,6 +355,15 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
                 final_response = json.dumps(result)[:4000]
         else:
             final_response = str(result)
+
+        # Guard: a stringified Python object is never a real answer. The first
+        # run of this port shipped "<coroutine object AgentOrg.get_response ...>"
+        # as final_response and was graded as eight ordinary agent failures.
+        if re.match(r"^<[\w.]+ object at 0x[0-9a-f]+>$", final_response.strip()) or \
+                final_response.strip().startswith("<coroutine object"):
+            raise RuntimeError(
+                f"entrypoint produced a stringified object, not an answer: {final_response[:120]}"
+            )
     except Exception as exc:  # noqa: BLE001 - reported, never swallowed
         error = f"{type(exc).__name__}: {exc}"
         final_response = f"The assistant failed to complete the request: {error}"
