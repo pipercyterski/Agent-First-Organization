@@ -1,4 +1,4 @@
-"""Generate `dystopic/taskgraph.json` — the agent under test.
+"""Generate `dystopic/taskgraph.json`, the agent under test.
 
 WHY THIS FILE EXISTS
 --------------------
@@ -9,8 +9,8 @@ and the current `ResourceLoader.init_tools` skips any id not present in the
 that still answers customers. The same is true of every other file under
 `examples/` and of `tests/data/shopify_tool_taskgraph.json`.
 
-This script rebuilds the *same* assistant — same role, same objective, same nine
-Shopify tools — in the format the framework currently loads: `ToolItem` slug ids
+This script rebuilds the *same* assistant, same role, same objective, same nine
+Shopify tools, in the format the framework currently loads: `ToolItem` slug ids
 plus an `openai-agent` node, mirroring `integration_tests/taskgraphs/
 slot_filling_agent_taskgraph.json`, which is the only agent shape CI exercises.
 

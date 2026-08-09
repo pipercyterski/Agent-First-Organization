@@ -19,15 +19,15 @@ Each of these is also recorded in ARKLEX_EGRESS_AUDIT.md.
    ``shopify/*`` tool's ``Tool.func`` is replaced with a shim that calls the
    Odyssey proxy and renders the structured response into the same
    ``message_flow`` / ``response`` output model the real tool returns. The
-   consequence: the customer's Shopify **GraphQL envelope parsing** —
+   consequence: the customer's Shopify **GraphQL envelope parsing** -
    ``json.loads(response)["data"]``, the ``userErrors`` branch, and the
-   ``ToolExecutionError``/``ShopifyError`` raises — does **not** run. That code
+   ``ToolExecutionError``/``ShopifyError`` raises, does **not** run. That code
    is therefore NOT under test.
 
    Why not intercept lower, at ``shopify.GraphQL().execute``? Because that
    method returns a JSON *string*. A tool's ``output_schema`` can pin the shape
    of a structured response but cannot pin the shape of text inside a string,
-   so intercepting there would give up schema validation on every tool — the
+   so intercepting there would give up schema validation on every tool, the
    single most load-bearing defence against a simulator inventing a payload the
    agent cannot parse.
 
@@ -80,7 +80,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from dystopic.odyssey import Envelope, proxy_call_with  # noqa: E402
 
-# Globals, not ContextVars — see module docstring.
+# Globals, not ContextVars, see module docstring.
 _ENVELOPE: Envelope | None = None
 _CALLS: list[dict[str, Any]] = []
 
@@ -337,7 +337,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
         orchestrator = AgentOrg(config=config, executor=executor)
         # get_response is `async def`; the openai-agent node runs the OpenAI
         # Agents SDK Runner on this loop, and Tool.execute dispatches sync tool
-        # bodies through asyncio.to_thread — which is why the proxy envelope is
+        # bodies through asyncio.to_thread, which is why the proxy envelope is
         # a module-level global rather than a ContextVar.
         result = asyncio.run(
             orchestrator.get_response(
