@@ -67,6 +67,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
+import logging
 import os
 import re
 import sys
@@ -283,6 +284,29 @@ def _install_proxy_tools() -> list[str]:
     return patched
 
 
+class _ErrorCapture(logging.Handler):
+    """Collect WARNING+ log records so failures reach the trace.
+
+    `OpenAIAgent.response` catches every exception, logs it, and returns the
+    generic "An error occurred while processing your request." string. Proxy
+    topology captures no stdout, so without this handler a 401, a tool crash and
+    a model refusal are indistinguishable from outside the sandbox.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.records: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = record.getMessage()
+            if record.exc_info:
+                msg += " | " + "".join(traceback.format_exception(*record.exc_info))[-1200:]
+            self.records.append(f"{record.levelname} {record.name}: {msg[:1500]}")
+        except Exception:  # noqa: BLE001 - a logging handler must never raise
+            pass
+
+
 def _run_coroutine(coro: Any) -> Any:
     """Drive a coroutine to completion from either a sync or async caller.
 
@@ -337,6 +361,10 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
 
     patched = _install_proxy_tools()
 
+    capture = _ErrorCapture()
+    logging.getLogger().addHandler(capture)
+    logging.getLogger().setLevel(logging.WARNING)
+
     from arklex.models.llm_config import LLMConfig
     from arklex.orchestrator.executor.executor import Executor
     from arklex.orchestrator.orchestrator import AgentOrg
@@ -389,6 +417,8 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
         final_response = f"The assistant failed to complete the request: {error}"
         _CALLS.append({"tool": "__entrypoint__", "outcome": "error",
                        "error": traceback.format_exc()[-1500:]})
+    finally:
+        logging.getLogger().removeHandler(capture)
 
     return {
         "final_response": final_response or "(no response produced)",
@@ -397,6 +427,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
             "tool_calls": _CALLS,
             "tool_call_count": len([c for c in _CALLS if c.get("outcome") == "ok"]),
             "error": error,
+            "log_errors": capture.records[-12:],
         },
     }
 
