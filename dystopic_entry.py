@@ -283,6 +283,26 @@ def _install_proxy_tools() -> list[str]:
     return patched
 
 
+def _run_coroutine(coro: Any) -> Any:
+    """Drive a coroutine to completion from either a sync or async caller.
+
+    The platform dispatches `run()` from inside an already-running event loop,
+    so `asyncio.run` raises "cannot be called from a running event loop". When
+    a loop is already running we execute the coroutine on its own loop in a
+    worker thread. That is safe here precisely because the proxy envelope is a
+    module-level global rather than a ContextVar.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def _user_text(task_input: Any) -> str:
     if isinstance(task_input, str):
         return task_input
@@ -336,10 +356,10 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
         )
         orchestrator = AgentOrg(config=config, executor=executor)
         # get_response is `async def`; the openai-agent node runs the OpenAI
-        # Agents SDK Runner on this loop, and Tool.execute dispatches sync tool
+        # Agents SDK Runner on that loop, and Tool.execute dispatches sync tool
         # bodies through asyncio.to_thread, which is why the proxy envelope is
         # a module-level global rather than a ContextVar.
-        result = asyncio.run(
+        result = _run_coroutine(
             orchestrator.get_response(
                 {"text": user_text, "chat_history": [], "parameters": {}}
             )
