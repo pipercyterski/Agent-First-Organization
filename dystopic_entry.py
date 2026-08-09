@@ -227,6 +227,44 @@ _NON_TOOL_KWARGS = {
 }
 
 
+def _patch_list_slot_types() -> bool:
+    """Repair `Tool._slot_type_to_python_type` for parameterized list slots.
+
+    FINDING (arklex, not the platform): the mapping covers the bare string
+    "list" but not "list[str]", so every parameterized-list slot falls through
+    to `Any`. Pydantic renders `Any` as an empty schema `{}`, and OpenAI's
+    function-schema validator rejects it with
+
+        Invalid schema for function 'shopify_get_order_details':
+        In context=('properties','order_ids','anyOf','0'),
+        schema must have a 'type' key.
+
+    Because that 400 rejects the WHOLE tools array, an agent carrying any such
+    tool can make no tool calls at all. Three registered tools are affected:
+    shopify/get-order-details, shopify/get-products, shopify/cart-add-items,
+    and all three are in the shipped Shopify assistant.
+
+    Without this repair the benchmark measures only the crash, so the fix is
+    applied here and recorded as a deviation. The upstream fix is the same
+    three lines inside `_slot_type_to_python_type`.
+    """
+    from arklex.resources.tools.tools import Tool
+
+    if getattr(Tool, "_dystopic_list_slot_patch", False):
+        return False
+    original = Tool._slot_type_to_python_type
+    inner_types: dict[str, type] = {"str": str, "int": int, "float": float, "bool": bool}
+
+    def patched(self: Any, type_str: str) -> Any:
+        if isinstance(type_str, str) and type_str.startswith("list[") and type_str.endswith("]"):
+            return list[inner_types.get(type_str[5:-1].strip(), str)]
+        return original(self, type_str)
+
+    Tool._slot_type_to_python_type = patched
+    Tool._dystopic_list_slot_patch = True
+    return True
+
+
 def _install_proxy_tools() -> list[str]:
     """Replace each Shopify tool's `func` with a proxy shim.
 
@@ -359,6 +397,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     # The framework builds a langchain/OpenAI client at import of ModelService.
     os.environ.setdefault("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "sk-unused"))
 
+    slot_patch = _patch_list_slot_types()
     patched = _install_proxy_tools()
 
     capture = _ErrorCapture()
@@ -424,6 +463,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
         "final_response": final_response or "(no response produced)",
         "metadata": {
             "patched_tools": patched,
+            "list_slot_type_patch_applied": slot_patch,
             "tool_calls": _CALLS,
             "tool_call_count": len([c for c in _CALLS if c.get("outcome") == "ok"]),
             "error": error,
