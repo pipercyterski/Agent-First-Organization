@@ -119,9 +119,6 @@ def _render_order_details(resp: dict) -> str:
         out += f"Order Status: {o.get('status', 'None')}\n"
         out += f"Fulfillment Status: {o.get('fulfillment_status', 'None')}\n"
         out += f"Return Status: {o.get('return_status', 'None')}\n"
-        out += f"Cancellable: {o.get('cancellable', 'None')}\n"
-        if o.get("cancel_block_reason"):
-            out += f"Cancel Block Reason: {o.get('cancel_block_reason')}\n"
         out += f"Financial Status: {o.get('financial_status', 'None')}\n"
         out += f"Total Price: {_fmt_money(o.get('total_amount'), o.get('currency'))}\n"
         out += "Line Items:\n"
