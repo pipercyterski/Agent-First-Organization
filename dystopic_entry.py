@@ -63,7 +63,7 @@ at one commit yields many different agents. The platform models that with a
     {"snapshot_id": 12, "variant_id": 3, "name": "read-only-concierge",
      "fingerprint": "…", "knob_values": {"mutations_enabled": false, …}}
 
-``dystopic/harness.py`` is the adapter: it validates those knob values and
+``dystopic_harness.py`` is the adapter: it validates those knob values and
 compiles them into a taskgraph, so the tool surface, the agent prompt and the
 model all follow the configuration. Two rules matter:
 
@@ -101,7 +101,10 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from dystopic.harness import (  # noqa: E402
+# NOT `dystopic.harness`: the SDK installs a real package named `dystopic`, which
+# wins over this repo's `dystopic/` namespace directory, so a module placed there
+# is unimportable in the sandbox. Top-level module, mirroring `dystopic_entry`.
+from dystopic_harness import (  # noqa: E402
     ConfigurationError,
     build_taskgraph,
     load_configuration,
