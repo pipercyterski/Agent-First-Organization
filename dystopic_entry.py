@@ -53,6 +53,28 @@ Each of these is also recorded in ARKLEX_EGRESS_AUDIT.md.
    signatures directly (``Executor(tools, workers, nodes, llm_config)`` and
    ``AgentOrg(config, executor)``).
 
+HARNESS VARIANTS (CONFIGURATIONS)
+---------------------------------
+arklex is an agent *builder*: a config compiles into a task graph, so one repo
+at one commit yields many different agents. The platform models that with a
+**harness variant**, and hands the frozen configuration to this entrypoint as
+``task_input["configuration"]``::
+
+    {"snapshot_id": 12, "variant_id": 3, "name": "read-only-concierge",
+     "fingerprint": "…", "knob_values": {"mutations_enabled": false, …}}
+
+``dystopic/harness.py`` is the adapter: it validates those knob values and
+compiles them into a taskgraph, so the tool surface, the agent prompt and the
+model all follow the configuration. Two rules matter:
+
+* **The key is absent when no variant was frozen**, and this entrypoint then
+  loads the static ``dystopic/taskgraph.json`` exactly as it did before the
+  feature existed. That path is unchanged on purpose.
+* **An unbuildable configuration raises**, it does not fall back to defaults.
+  Config-loading is part of what the check exercises; silently running the
+  default agent under a variant's name would report a green suite for a
+  configuration that never actually ran.
+
 WHY A MODULE-LEVEL ENVELOPE
 ---------------------------
 ``Tool.execute`` dispatches sync tool functions with
@@ -79,6 +101,12 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from dystopic.harness import (  # noqa: E402
+    ConfigurationError,
+    build_taskgraph,
+    load_configuration,
+    tool_surface,
+)
 from dystopic.odyssey import Envelope, proxy_call_with  # noqa: E402
 
 # Globals, not ContextVars, see module docstring.
@@ -265,18 +293,26 @@ def _patch_list_slot_types() -> bool:
     return True
 
 
-def _install_proxy_tools() -> list[str]:
+def _install_proxy_tools(allowed_slugs: set[str] | None = None) -> list[str]:
     """Replace each Shopify tool's `func` with a proxy shim.
 
     `RESOURCE_MAP[slug]["item_cls"]` holds the module-level `Tool` object built
     by `@register_tool` at import time; `ResourceLoader` later does
     `base_tool.copy()`, which carries `self.func` through. Swapping `.func`
     here therefore reaches every instance the executor builds.
+
+    ``allowed_slugs`` restricts patching to the configuration's resolved tool
+    surface. Tools outside it are left un-shimmed *and* absent from the
+    taskgraph, so they are genuinely unreachable in that configuration rather
+    than merely un-advertised — if the agent somehow reached one it would hit
+    the real Shopify client and fail, which is the honest outcome.
     """
     from arklex.resources.resource_map import RESOURCE_MAP
 
     patched: list[str] = []
     for slug, (tool_name, renderer, out_field) in TOOL_SPECS.items():
+        if allowed_slugs is not None and slug not in allowed_slugs:
+            continue
         entry = RESOURCE_MAP.get(slug)
         if entry is None:
             _CALLS.append({"tool": tool_name, "outcome": "not_in_resource_map", "error": slug})
@@ -398,7 +434,41 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     os.environ.setdefault("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "sk-unused"))
 
     slot_patch = _patch_list_slot_types()
-    patched = _install_proxy_tools()
+
+    # ---- THE HARNESS-VARIANT SEAM -------------------------------------
+    # `configuration` is the frozen harness variant the platform is grading
+    # this run under. When the check froze no variant the key is absent, and
+    # this port behaves exactly as it did before variants existed: the static
+    # taskgraph, all nine tools. That no-variant path is deliberately
+    # byte-identical, because it is what every pre-variant check replays.
+    #
+    # A configuration we cannot build is a HARD failure, never a fallback to
+    # defaults: silently running the default agent under a variant's name would
+    # report a green suite for a configuration that never actually ran.
+    configuration = task_input_map.get("configuration") if isinstance(task_input_map, dict) else None
+    config_meta: dict[str, Any] = {"source": "static_taskgraph"}
+    allowed_slugs: set[str] | None = None
+
+    if isinstance(configuration, dict) and configuration:
+        knob_values = configuration.get("knob_values") or {}
+        resolved, defaulted = load_configuration(knob_values)
+        surface = tool_surface(resolved)
+        allowed_slugs = {slug for slug, _, _ in surface}
+        config = build_taskgraph(resolved)
+        config_meta = {
+            "source": "harness_variant",
+            "variant_name": configuration.get("name"),
+            "variant_id": configuration.get("variant_id"),
+            "snapshot_id": configuration.get("snapshot_id"),
+            "fingerprint": configuration.get("fingerprint"),
+            "knob_values": resolved,
+            "defaulted_knobs": defaulted,
+            "tool_surface": sorted(fn for _, fn, _ in surface),
+        }
+    else:
+        config = json.loads(TASKGRAPH.read_text())
+
+    patched = _install_proxy_tools(allowed_slugs)
 
     capture = _ErrorCapture()
     logging.getLogger().addHandler(capture)
@@ -408,7 +478,6 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     from arklex.orchestrator.executor.executor import Executor
     from arklex.orchestrator.orchestrator import AgentOrg
 
-    config = json.loads(TASKGRAPH.read_text())
     llm_config = LLMConfig.model_validate(config["llm_config"])
     config["model"] = config["llm_config"]
 
@@ -462,6 +531,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     return {
         "final_response": final_response or "(no response produced)",
         "metadata": {
+            "configuration": config_meta,
             "patched_tools": patched,
             "list_slot_type_patch_applied": slot_patch,
             "tool_calls": _CALLS,
