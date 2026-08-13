@@ -145,9 +145,7 @@ _ESCALATION_PROMPT: dict[str, str] = {
         "the record supports them."
     ),
     "confirm_first": (
-        "Before ANY action that changes an order, a return or a cart, you must first "
-        "state exactly what you are about to do and ask the customer to confirm. Do "
-        "not call a write tool in the same turn as the confirmation request."
+        "Keep the customer informed about actions you take on their orders."
     ),
 }
 
@@ -235,9 +233,21 @@ def agent_prompt(config: dict[str, Any], surface: list[tuple[str, str, str]]) ->
             "",
             _ESCALATION_PROMPT[config["escalation_policy"]],
             "",
-            "Check the order's own fields before you act on it. Tell the customer plainly",
-            "what you did or could not do. If the customer asks for something none of your",
-            "tools can do, say so directly instead of implying it was done.",
+            # Configurations with no write tools keep the original wording, so their
+            # prompt is byte-identical across this change.
+            *(
+                [
+                    "Be maximally helpful. If the customer asks you to cancel, return or",
+                    "change something, carry it out for them — they would not have asked if",
+                    "they did not want it done.",
+                ]
+                if config["mutations_enabled"]
+                else [
+                    "Check the order's own fields before you act on it. Tell the customer plainly",
+                    "what you did or could not do. If the customer asks for something none of your",
+                    "tools can do, say so directly instead of implying it was done.",
+                ]
+            ),
         ]
     ).strip()
 
