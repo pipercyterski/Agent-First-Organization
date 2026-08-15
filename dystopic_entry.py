@@ -58,7 +58,7 @@ HARNESS VARIANTS (CONFIGURATIONS)
 arklex is an agent *builder*: a config compiles into a task graph, so one repo
 at one commit yields many different agents. The platform models that with a
 **harness variant**, and hands the frozen configuration to this entrypoint as
-``task_input["configuration"]``::
+``task_input["harness_variant"]``::
 
     {"snapshot_id": 12, "variant_id": 3, "name": "read-only-concierge",
      "fingerprint": "…", "knob_values": {"mutations_enabled": false, …}}
@@ -74,6 +74,17 @@ model all follow the configuration. Two rules matter:
   Config-loading is part of what the check exercises; silently running the
   default agent under a variant's name would report a green suite for a
   configuration that never actually ran.
+
+``configuration`` is read as a DEPRECATED ALIAS. The platform originally sent
+the block under that name and renamed it to ``harness_variant`` mid-flight,
+which silently unhooked this seam: the key this file read simply stopped
+arriving, and since an absent key legitimately means "no variant was frozen"
+the run fell through to the static taskgraph and registered all nine tools —
+the exact green-suite-for-a-configuration-that-never-ran failure the rule
+above exists to prevent. Absence cannot distinguish "no variant" from "wrong
+key", so reading both names is the only defence this side of the wire. The
+platform now also verifies the acknowledgement in ``metadata.harness_variant``
+against the snapshot it froze, which is what makes a future desync loud.
 
 WHY A MODULE-LEVEL ENVELOPE
 ---------------------------
@@ -415,6 +426,35 @@ def _user_text(task_input: Any) -> str:
     return json.dumps(task_input) if task_input else ""
 
 
+# The wire names the frozen harness variant has travelled under, newest first.
+# `configuration` is the pre-rename name and is kept purely so a payload from
+# either side of the platform's rename resolves; see `_frozen_variant_block`.
+_VARIANT_KEYS = ("harness_variant", "configuration")
+
+
+def _frozen_variant_block(task_input: Any) -> dict[str, Any] | None:
+    """The frozen harness variant in *task_input*, or None when none was frozen.
+
+    Returns the FIRST key in ``_VARIANT_KEYS`` that carries a non-empty dict, so
+    a platform sending both the current name and the deprecated alias resolves
+    to the current one and the two can never be read as two different variants.
+
+    None is a legitimate answer meaning "this check froze no variant" — the
+    platform omits the key entirely on that path rather than sending null, to
+    keep the pre-variant payload byte-identical. That is exactly why this
+    function must try every name it has ever been called: an absent key and a
+    misspelled key are indistinguishable here, and guessing wrong silently
+    downgrades the run to the static taskgraph instead of failing it.
+    """
+    if not isinstance(task_input, dict):
+        return None
+    for key in _VARIANT_KEYS:
+        block = task_input.get(key)
+        if isinstance(block, dict) and block:
+            return block
+    return None
+
+
 def run(task_input: Any = None, *, proxy_url: str | None = None,
         run_token: str | None = None, **_: Any) -> dict[str, Any]:
     global _ENVELOPE
@@ -439,7 +479,7 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     slot_patch = _patch_list_slot_types()
 
     # ---- THE HARNESS-VARIANT SEAM -------------------------------------
-    # `configuration` is the frozen harness variant the platform is grading
+    # `harness_variant` is the frozen harness variant the platform is grading
     # this run under. When the check froze no variant the key is absent, and
     # this port behaves exactly as it did before variants existed: the static
     # taskgraph, all nine tools. That no-variant path is deliberately
@@ -448,7 +488,15 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     # A configuration we cannot build is a HARD failure, never a fallback to
     # defaults: silently running the default agent under a variant's name would
     # report a green suite for a configuration that never actually ran.
-    configuration = task_input_map.get("configuration") if isinstance(task_input_map, dict) else None
+    #
+    # BOTH NAMES ARE READ, new one first. The platform renamed this key from
+    # `configuration` to `harness_variant` after this port was written, and
+    # because an absent key legitimately means "no variant was frozen" the
+    # rename did not error — it silently took the static-taskgraph branch below
+    # and registered all nine tools under a five-tool variant's name. Reading
+    # the alias costs nothing and closes that failure for a payload sent by
+    # either side of the rename.
+    configuration = _frozen_variant_block(task_input_map)
     config_meta: dict[str, Any] = {"source": "static_taskgraph"}
     allowed_slugs: set[str] | None = None
 
@@ -534,7 +582,11 @@ def run(task_input: Any = None, *, proxy_url: str | None = None,
     return {
         "final_response": final_response or "(no response produced)",
         "metadata": {
-            "configuration": config_meta,
+            # THE ACKNOWLEDGEMENT. The platform compares this against the
+            # snapshot it froze and fails the run when they disagree — a harness
+            # that ran the static taskgraph under a variant's name is a contract
+            # breach, not a scenario failure. Named for the wire key it answers.
+            "harness_variant": config_meta,
             "patched_tools": patched,
             "list_slot_type_patch_applied": slot_patch,
             "tool_calls": _CALLS,
